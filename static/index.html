@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Homework 1 INFO 4310</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        h2 { 
+            text-align: center; 
+            margin-top: 50px;
+            max-width: 900px;
+        }
+        p {
+            margin: 50px;
+            max-width: 900px;
+        }
+        .city-boundary { 
+            fill: none; 
+            stroke: lightgrey; 
+            stroke-width: 1; 
+        }
+        .legend { 
+            font-size: 12px; 
+            display: block; 
+        }
+    </style>
+</head>
+<body>
+    <h2>San Francisco Tree Species in Urban Planning</h2>
+    <p>Grouping trees species based on their primary <i>functions</i> 
+        provides insight into strategic—or unstrategic—urban planning decisions in San Francisco.
+        The neighborhood labels provide more context for tree placement and selection.
+        The origin of trees also shows where urban planners possibly source various trees depending on their function.
+        These graphs attempt to bring awareness to urban planning decisions regarding trees.
+        <br><br>
+        <i>Note: Of the 37,118 trees in the dataset, 8,919 were omitted because they did not fit into one of the four function categories.
+        This is due to the time constraint on this project to research and classify more tree species into more function categories.</i> 
+        <br><br>
+        <b>Tree Species Categorization by Function</b><br>
+        <u>Ornamental/Decorative Trees:</u> visual appeal, seasonal beauty<br>
+        <u>Urban/Shade Trees:</u> reduce heat, improve air quality<br>
+        <u>Evergreen/Privacy Trees:</u> natural barriers, reduce noise pollution, maintain greenery<br>
+        <u>Invasive Trees:</u> maintain biodiversity, prevent ecological imbalances
+        <br><br>
+        <b>Neighborhood Labels and Corresponding Significant Landmarks</b><br>
+        <u>Fisherman's Wharf:</u> Pier 39, sea lions<br>
+        <u>Mission:</u> Dolores Park, street murals<br>
+        <u>South of Market:</u> Oracle Park, tech, museums<br>
+        <u>Golden Gate Park:</u> De Young Museum, Japanese Tea Garden<br>
+        <u>North Beach:</u> Coit Tower, Italian heritage<br>
+        <u>Castro:</u> LGBTQ+ history, Castro Theatre<br>
+        <u>Ashbury Heights:</u> 1960s counterculture<br>
+        <u>Presidio Heights:</u> Golden Gate Bridge, Crissy Field<br>
+        <u>Financial District:</u> Transamerica Pyramid, Ferry Building
+    </p>
+
+    <!-- map and bar divs -->
+    <div style="display: inline-block; justify-content: space-around; align-items: left; 
+    text-align: center; border: 2px solid lightgrey; margin-left: 50px">
+
+        <!-- map div -->
+        <div>
+            <h3 style="padding-top: 20px; margin-bottom: 5px">Tree Distribution by Tree Function</h3>
+            <h4 style="margin-top: 0">in San Francisco, 2022</h4>
+            <svg id="map" width="900" height="800"></svg>
+        </div>
+
+        <!-- bar chart div -->
+        <div style="padding: 20px">
+            <h3 style="margin-bottom: 5px">Count of Trees by Tree Function and Location Origin</h3>
+            <h4 style="margin-top: 0">in San Francisco, 2022</h4>
+            <svg id="bar" width="900" height="400"></svg>
+        </div>
+
+    </div>
+
+    <script>
+        let svgMap = d3.select("#map"),
+        svgBar = d3.select("#bar");
+
+        // define categories
+        const categories = ["Ornamental/Decorative", "Urban/Shade", "Evergreen/Privacy", "Invasive"];
+        const categoryMapping = {
+            "Ornamental/Decorative": ["Prunus", "Magnolia", "Lagerstroemia", "Callistemon", "Malus", "Corymbia", "Arbutus", "Eriobotrya"],
+            "Urban/Shade": ["Platanus", "Quercus", "Acer", "Fraxinus", "Ginkgo", "Pyrus", "Ulmus", "Lophostemon", "Tristaniopsis"],
+            "Evergreen/Privacy": ["Pinus", "Cupressus", "Sequoia", "Pittosporum", "Ligustrum", "Juniperus"],
+            "Invasive": ["Eucalyptus", "Acacia", "Schinus", "Ficus", "Melaleuca", "Maytenus", "Myoporum"]
+        };
+
+        // define colors
+        const colorScale = d3.scaleOrdinal()
+            .domain(categories)
+            .range(["#ffc033", "#4d9fdb", "#529f5e", "#d85252"]);
+
+        let projection = d3.geoMercator()
+            .center([-122.4194, 37.7749])
+            .scale(240000)
+            .translate([500, 350]);
+
+        // load json
+        d3.json("SF-Neighborhoods.geo.json").then(function(topoData) {
+        const objectKey = Object.keys(topoData.objects)[0];
+        const geoData = topojson.feature(topoData, topoData.objects[objectKey]);
+
+        let path = d3.geoPath().projection(projection);
+
+        // draw city boundaries
+        svgMap.append("g")
+            .selectAll("path")
+            .data(geoData.features)
+            .enter()
+            .append("path")
+            .attr("d", path)
+            .attr("class", "city-boundary");
+
+        // load csv
+        d3.csv("Street_Tree_List-2022-01-30_FILTERED.csv").then(function(data) {
+
+        // categorize trees
+        let omittedCount = 0;
+
+        function categorizeSpecies(species) {
+            for (const [category, keywords] of Object.entries(categoryMapping)) {
+                if (keywords.some(keyword => species.includes(keyword))) {
+                    return category;
+                }
+            }
+            omittedCount++;
+            return null;
+        }
+
+        data.forEach(d => d.SpeciesCategory = categorizeSpecies(d.qSpecies));
+        data = data.filter(d => d.SpeciesCategory !== null);
+        console.log(`Omitted Trees (Not Categorized): ${omittedCount}`);
+
+        // draw trees as circles
+        svgMap.selectAll("circle")
+            .data(data)
+            .enter()
+            .append("circle")
+            .attr("cx", d => projection([+d.Longitude, +d.Latitude])[0])
+            .attr("cy", d => projection([+d.Longitude, +d.Latitude])[1])
+            .attr("r", 2)
+            .attr("fill", d => colorScale(d.SpeciesCategory))
+            .attr("opacity", 0.5);
+                    
+        // define significant neighborhoods
+        const significantNeighborhoods = [
+            "Fishermans Wharf", "Mission", "South of Market", "Golden Gate Park",
+            "North Beach", "Castro", "Ashbury Heights", "Presidio Heights", "Financial District"
+        ];
+
+        // add neighborhood labels
+        svgMap.selectAll(".neighborhood-label")
+            .data(geoData.features.filter(d => significantNeighborhoods.includes(d.properties.name)))
+            .enter()
+            .append("text")
+            .attr("class", "neighborhood-label")
+            .attr("x", d => path.centroid(d)[0])
+            .attr("y", (d, i) => path.centroid(d)[1])
+            .attr("text-anchor", "end")
+            .style("fill", "black") 
+            .style("font-size", "14px")
+            .style("font-weight", "bold")
+            .style("stroke", "white")
+            .style("stroke-width", "5px")
+            .style("stroke-opacity", "0.8")
+            .style("paint-order", "stroke fill")
+            .text(d => d.properties.name);
+
+        // put labels on top of trees
+        svgMap.selectAll(".neighborhood-label").raise();
+
+        // add legend
+        const legend = svgMap.append("g")
+            .attr("class", "legend")
+            .attr("transform", "translate(50, 50)");
+
+        categories.forEach((category, i) => {
+            legend.append("circle")
+                .attr("cx", 10)
+                .attr("cy", i * 20 + 13)
+                .attr("r", 5)
+                .attr("fill", colorScale(category))
+                .attr("opacity", 0.7);
+
+            legend.append("text")
+                .attr("x", 20)
+                .attr("y", i * 20 + 15)
+                .text(category)
+                .attr("alignment-baseline", "middle")
+                .attr("fill", "black");
+        });
+
+        // draw bar chart
+        drawBarChart(data);
+        });
+        });
+
+        // categorize trees by origin
+        function drawBarChart(data) {
+            const originMapping = {
+            "North America": ["Quercus", "Acer", "Fraxinus", "Ulmus", "Platanus", "Sequoia", "Juniperus", "Arbutus"],
+            "Asia": ["Ginkgo", "Prunus", "Magnolia", "Eriobotrya", "Pyrus", "Melaleuca", "Tristaniopsis"],
+            "Europe": ["Malus"],
+            "Australia": ["Eucalyptus", "Acacia", "Callistemon", "Corymbia", "Lophostemon", "Pittosporum"],
+            "South America": ["Schinus", "Myoporum"],
+            "Africa": ["Maytenus"],
+            "Worldwide": ["Pinus", "Cupressus", "Ligustrum", "Ficus"]
+        };
+
+        function getTreeOrigin(species) {
+            return Object.entries(originMapping).find(([region, keywords]) => 
+                keywords.some(keyword => species.includes(keyword)))?.[0] || "Unknown";
+        }
+
+        let treeCounts = {};
+        Object.keys(originMapping).forEach(region => {
+            treeCounts[region] = { "Ornamental/Decorative": 0, "Urban/Shade": 0, "Evergreen/Privacy": 0, "Invasive": 0 };
+        });
+
+        data.forEach(d => {
+            let region = getTreeOrigin(d.qSpecies);
+            if (treeCounts[region]) {
+                treeCounts[region][d.SpeciesCategory]++;
+            }
+        });
+
+        let barChartData = Object.keys(treeCounts).map(region => ({
+            region: region,
+            ...treeCounts[region]
+        }));
+
+        let margin = { top: 30, right: 30, bottom: 50, left: 60 },
+            width = +svgBar.attr("width") - margin.left - margin.right,
+            height = +svgBar.attr("height") - margin.top - margin.bottom;
+
+        let xScale = d3.scaleBand()
+            .domain(barChartData.map(d => d.region))
+            .range([0, width])
+            .padding(0.2);
+
+        let yScale = d3.scaleLinear()
+            .domain([0, d3.max(barChartData, d => Object.values(d).slice(1).reduce((a, b) => a + b, 0))])
+            .nice()
+            .range([height, 0]);
+
+        let stack = d3.stack().keys(categories);
+        let series = stack(barChartData);
+
+        let g = svgBar.append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        g.selectAll(".serie")
+            .data(series)
+            .enter().append("g")
+            .attr("fill", d => colorScale(d.key))
+            .selectAll("rect")
+            .data(d => d)
+            .enter().append("rect")
+            .attr("opacity", 0.8)
+            .attr("x", d => xScale(d.data.region))
+            .attr("y", d => yScale(d[1]))
+            .attr("height", d => yScale(d[0]) - yScale(d[1]))
+            .attr("width", xScale.bandwidth());
+
+        g.append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(xScale))
+            .style("font-size", "12px");
+        
+        g.append("g")
+            .call(d3.axisLeft(yScale))
+            .style("font-size", "12px");
+    }
+    </script>
+</body>
+</html>
